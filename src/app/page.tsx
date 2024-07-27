@@ -1,14 +1,28 @@
 "use client"
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { Card, CardHeader, CardBody, CardFooter } from "@nextui-org/card";
 import { Navbar, NavbarBrand, NavbarMenuToggle, NavbarMenuItem, NavbarMenu, NavbarContent, NavbarItem, Link, Button } from "@nextui-org/react";
 import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure } from "@nextui-org/react";
 import { Input } from "@nextui-org/react";
 import { Textarea } from "@nextui-org/input";
+import { useDispatch, useSelector } from 'react-redux';
+import { handleGetTodoRequest } from '@/redux/actions-reducers/todo/todo';
+import toast from 'react-hot-toast';
 
-const page = () => {
-    const [isMenuOpen, setIsMenuOpen] = React.useState(false);
-    const { isOpen, onOpen, onOpenChange } = useDisclosure();
+const Home = () => {
+    const dispatch = useDispatch();
+    const [flag, setFlag] = useState(false)
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [editTodoLoadingId, setEditTodoLoadingId] = useState("")
+    const [deleteTodoLoadingId, setDeleteTodoLoadingId] = useState("")
+    const [modalIsOpen, setModalIsOpen] = useState(false)
+    const [load, setLoad] = useState(false)
+    const [editTodo, setEditTodo] = useState<any>(null)
+    const { isLoading, todoList, totalCount } = useSelector((state: any) => state.Todo)
+    const [todoState, setTodoState] = useState({
+        title: "",
+        description: ""
+    })
 
     const menuItems = [
         "Add Todo",
@@ -21,23 +35,98 @@ const page = () => {
         return text
     }
 
+    useEffect(() => {
+        dispatch(handleGetTodoRequest({ currentPage: 1, perPage: 20 }))
+    }, [flag])
+
+    useEffect(() => {
+        if (editTodo) {
+            setTodoState({
+                title: editTodo.title,
+                description: editTodo.description
+            })
+        }
+    }, [editTodo])
+
+    const handleGetEditTodo = async (id: string) => {
+        setLoad(true)
+        setEditTodoLoadingId(id)
+        const response = await fetch(`api/todo?id=${id}`, {
+            method: "GET",
+            headers: {
+                "Content-Type": "application/json"
+            },
+        })
+        const jsonData = await response.json();
+        if (jsonData.success === true) {
+            setEditTodo(jsonData.data)
+            setModalIsOpen(!modalIsOpen)
+        } else {
+            toast.error(jsonData.message);
+        }
+        setEditTodoLoadingId("")
+        setLoad(false)
+    }
+
+    const handleAddEditTodo = async (payload: any) => {
+        setLoad(true)
+        const response = await fetch(`api/todo`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(payload)
+        })
+        const jsonData = await response.json();
+        if (jsonData.success === true) {
+            toast.success(jsonData.message);
+            setFlag(!flag)
+            setModalIsOpen(!modalIsOpen)
+        } else {
+            toast.error(jsonData.message);
+        }
+        setLoad(false)
+    }
+
+
     const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault();
-        const data = new FormData(event.currentTarget);
-        const title = data.get('title')
-        const description = data.get('description')
-        console.log({ title, description })
-        onOpenChange()
+        if (editTodo) {
+            handleAddEditTodo({ ...todoState, id: editTodo.id })
+        } else {
+            handleAddEditTodo({ ...todoState })
+        }
+    }
+
+    const handleDeleteTodo = async (id: string) => {
+        setLoad(true)
+        setDeleteTodoLoadingId(id)
+        const response = await fetch(`api/todo`, {
+            method: "DELETE",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ id })
+        })
+        const jsonData = await response.json();
+        if (jsonData.success === true) {
+            toast.success(jsonData.message);
+            setFlag(!flag)
+        } else {
+            toast.error(jsonData.message);
+        }
+        setDeleteTodoLoadingId("")
+        setLoad(false)
     }
 
     return (
         <>
-            <Modal isOpen={isOpen} onOpenChange={onOpenChange}>
+            <Modal isOpen={modalIsOpen} onOpenChange={() => setModalIsOpen(!modalIsOpen)}>
                 <ModalContent>
                     {(onClose) => (
                         <>
                             <ModalHeader className="flex flex-col gap-1">
-                                Add Todo
+                                {editTodo ? "Update" : "Add"} Todo
                             </ModalHeader>
                             <form onSubmit={handleSubmit}>
 
@@ -45,14 +134,16 @@ const page = () => {
                                     <Input
                                         type="text"
                                         label="Title"
-                                        name='title'
                                         required
+                                        onChange={(e) => setTodoState({ ...todoState, title: e.target.value })}
+                                        value={todoState.title}
                                         placeholder="Enter todo title"
                                     />
                                     <Textarea
                                         label="Description"
-                                        name='description'
                                         required
+                                        onChange={(e) => setTodoState({ ...todoState, description: e.target.value })}
+                                        value={todoState.description}
                                         placeholder="Enter your description"
                                     />
                                 </ModalBody>
@@ -60,8 +151,12 @@ const page = () => {
                                     <Button color="danger" variant="light" onPress={onClose}>
                                         Close
                                     </Button>
-                                    <Button color="primary" type='submit' >
-                                        Save
+                                    <Button
+                                        isLoading={load}
+                                        color="primary"
+                                        type='submit'
+                                    >
+                                        {editTodo ? "Update" : "Add"}
                                     </Button>
                                 </ModalFooter>
                             </form>
@@ -95,7 +190,14 @@ const page = () => {
 
                 <NavbarContent justify="end">
                     <NavbarItem className="hidden sm:flex">
-                        <Link onPress={() => onOpen()} className='cursor-pointer'>Add Todo</Link>
+                        <Link onPress={() => {
+                            setModalIsOpen(!modalIsOpen)
+                            setEditTodo(null)
+                            setTodoState({
+                                title: "",
+                                description: ""
+                            })
+                        }} className='cursor-pointer'>Add Todo</Link>
                     </NavbarItem>
                     <NavbarItem className="hidden sm:flex">
                         <Button as={Link} color="warning" href="#" variant="flat">
@@ -123,20 +225,46 @@ const page = () => {
             </Navbar>
             <div className=''>
                 <div className="flex flex-wrap justify-center">
-                    <Card className='w-60 max-w-60 min-w-60 h-52 max-h-52 min-h-52 m-5'>
-                        <CardBody className='flex justify-between flex-col p-4'>
-                            <div
-                                className=''
-                            >
-                                {textTruncate("Lorem ipsum dolor sit amet consectetur adipisicing elit. Laudantium, veniam nulla. Beatae perferendis accusantium quos, esse est dolorem ipsum autem nihil quam quod minus neque delectus quo, ducimus incidunt non numquam fugiat fuga libero amet maiores deleniti, eveniet vitae? Doloremque.", 120)}
+                    {todoList.map((item: any, index: number) => (
 
-                            </div>
-                            <div className='self-end'>
-                                <Button color="primary" className='mr-4' size='sm'>Edit</Button>
-                                <Button color="danger" size='sm'>Delete</Button>
-                            </div>
-                        </CardBody>
-                    </Card>
+                        <Card className='w-60 max-w-60 min-w-60 h-52 max-h-52 min-h-52 m-5' key={`_${item.id}-${index}`}>
+                            <CardBody className='flex justify-between flex-col p-4'>
+                                <div>
+                                    <div>
+                                        <h2 className='text-lg font-bold'>{textTruncate(item.title, 18)}</h2>
+                                    </div>
+                                    <div
+                                        className='h-28 overflow-auto text-sm'
+                                    >
+                                        {textTruncate(item.description, 120)}
+                                    </div>
+                                </div>
+                                <div className='self-end'>
+                                    <Button
+                                        color="primary"
+                                        className="mr-4"
+                                        size='sm'
+                                        isLoading={load && editTodoLoadingId === item.id}
+                                        onPress={() => {
+                                            handleGetEditTodo(item.id)
+                                        }}
+                                    >
+                                        Edit
+                                    </Button>
+                                    <Button
+                                        color="danger"
+                                        size='sm'
+                                        isLoading={load && deleteTodoLoadingId === item.id}
+                                        onPress={() => {
+                                            handleDeleteTodo(item.id)
+                                        }}
+                                    >
+                                        Delete
+                                    </Button>
+                                </div>
+                            </CardBody>
+                        </Card>
+                    ))}
 
                 </div>
             </div>
@@ -144,4 +272,4 @@ const page = () => {
     )
 }
 
-export default page
+export default Home
